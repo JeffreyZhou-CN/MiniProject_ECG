@@ -29,3 +29,19 @@ Decisions, problems and next steps. Newest entries at the bottom.
 **Next steps**
 
 1. Implement the data generator with tests.
+
+
+
+## 2026-11-25 — Data generator
+
+**Done**
+
+- `src/data.py`: `make_ecg(seed, seconds, fs, scale)` returns `(clean, measured, reference)`.
+  It keeps the course guide's order of random draws, so a given seed gives exactly the guide's
+  signals.
+- `tests/test_data.py`: shapes and finite values, reproducibility, scale property, R-peak
+  amplitude, invalid arguments (6 tests, all passing).
+
+**Next steps**
+
+1. Implement the baseline LMS filter with tests.
