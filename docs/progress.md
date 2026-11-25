@@ -28,7 +28,7 @@ Decisions, problems and next steps. Newest entries at the bottom.
 
 **Next steps**
 
-1. Implement the data generator with tests.
+ Implement the data generator with tests.
 
 
 
@@ -44,7 +44,7 @@ Decisions, problems and next steps. Newest entries at the bottom.
 
 **Next steps**
 
-1. Implement the baseline LMS filter with tests.
+ Implement the baseline LMS filter with tests.
 
 
 ---
@@ -68,4 +68,24 @@ Decisions, problems and next steps. Newest entries at the bottom.
 
 **Next steps**
 
-1. Implement the NLMS modification with tests.
+ Implement the NLMS modification with tests.
+
+
+---
+
+## 2026-11-25 — NLMS modification
+
+**Done**
+
+- `src/modified.py`: `nlms_filter(d, r, M, mu, eps=1e-6, normalize=True, reference_energy=None)`.
+  The only change from the baseline is the step: `mu / (eps + x @ x)` instead of `mu`.
+- Ablation switch: `normalize=False` reproduces LMS exactly; with `reference_energy=E` the step is
+  fixed to `mu / (eps + E)`, which keeps the NLMS step-size scale but removes the per-sample
+  normalisation.
+- `tests/test_modified.py`: hand example, scale invariance,
+  ablation equivalences, zero reference, convergence, stability at a 100x reference where LMS
+  diverges, shapes and no mutation, invalid arguments (14 tests).
+
+**Next steps**
+
+Evaluation metrics with tests.
