@@ -45,3 +45,27 @@ Decisions, problems and next steps. Newest entries at the bottom.
 **Next steps**
 
 1. Implement the baseline LMS filter with tests.
+
+
+---
+
+## 2026-11-25 — Baseline LMS
+
+**Done**
+
+- `src/baseline.py`: `lms_filter(d, r, M, mu)` returns the cleaned output `e` and final weights
+  `w`. Weights start at zero; the output is computed before each weight update.
+- `tests/test_baseline.py`: two hand-computed examples, zero reference and zero step size,
+  convergence to the true pathway, interference reduction on a synthetic ECG, shapes and
+  no input mutation, invalid arguments (11 tests).
+- Tagged `v0.1-baseline` before any modification.
+
+**Decision**
+
+- Update written as `w += mu * e * x` .
+  Papers that differentiate the
+  full squared error write `2 * mu`; the factor of two is absorbed into `mu`.
+
+**Next steps**
+
+1. Implement the NLMS modification with tests.
