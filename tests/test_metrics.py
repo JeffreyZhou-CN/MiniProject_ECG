@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from src.data import make_ecg
-from src.metrics import mse, peak_amplitude_error, r_peak_indices, snr_db
-
+from src.metrics import mse, paired_difference, peak_amplitude_error, r_peak_indices, snr_db
+from scipy.stats import t as student_t
 
 
 def test_hand_computed_mse_and_snr():
@@ -81,3 +81,34 @@ def test_peak_error_limiting_cases():
     clean, _, _ = make_ecg(0)
     assert np.isnan(peak_amplitude_error(clean, clean, start=len(clean) - 1))
     assert peak_amplitude_error(clean, np.full_like(clean, np.inf)) == np.inf
+
+
+
+def test_paired_difference_hand_computed():
+    """Hand example: differences [2, 3, 2] give mean 7/3 and a t-interval computed by hand."""
+
+    result = paired_difference([3.0, 5.0, 4.0], [1.0, 2.0, 2.0])
+    half = student_t.ppf(0.975, 2) * np.sqrt(1 / 3) / np.sqrt(3)
+    assert result["n"] == 3 and result["n_excluded"] == 0
+    assert result["mean"] == pytest.approx(7 / 3)
+    assert result["sd"] == pytest.approx(np.sqrt(1 / 3))
+    assert result["ci_low"] == pytest.approx(7 / 3 - half)
+    assert result["ci_high"] == pytest.approx(7 / 3 + half)
+    assert result["n_a_greater"] == 3
+
+
+def test_paired_difference_excludes_diverged_pairs():
+    """A pair with -inf is excluded from the mean but still counted as a > b."""
+    
+    result = paired_difference([10.0, 12.0, 11.0], [8.0, -np.inf, 9.0])
+    assert result["n"] == 2 and result["n_excluded"] == 1
+    assert result["mean"] == pytest.approx(2.0)
+    assert result["n_a_greater"] == 3
+
+
+def test_paired_difference_single_pair_has_no_interval():
+    """Limiting case: with one pair the mean exists but the interval cannot be computed."""
+
+    result = paired_difference([5.0], [3.0])
+    assert result["mean"] == pytest.approx(2.0)
+    assert np.isnan(result["ci_low"]) and np.isnan(result["ci_high"])

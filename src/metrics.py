@@ -3,7 +3,7 @@
 import numpy as np
 
 from scipy.signal import find_peaks
-
+from scipy.stats import t as student_t
 
 def _segment(clean, estimate, start):
     """Return clean[start:] and estimate[start:] as float arrays after checking shapes."""
@@ -111,3 +111,47 @@ def peak_amplitude_error(clean, estimate, start=0, fs=250):
     if not np.all(np.isfinite(values)):
         return np.inf
     return float(np.mean(np.abs(values - clean[peaks])))
+
+
+
+def paired_difference(a, b, confidence=0.95):
+    """Summarise paired differences a[i] - b[i] across independent recordings.
+
+    Pairs where either value is not finite (e.g. a diverged filter with SNR = -inf) are
+    excluded from the mean and interval and counted in ``n_excluded``. The interval is
+    mean +/- t_{(1+confidence)/2, n-1} * sd / sqrt(n) (Student's t, n - 1 degrees of freedom).
+
+    Parameters
+    ----------
+    a, b : array_like, shape (K,) (One value per recording, e.g. NLMS and LMS output SNR.)
+    confidence : float (Confidence level of the interval, default 0.95.)
+
+    Returns
+    -------
+    dict (n, n_excluded, mean, sd, ci_low, ci_high, median, n_a_greater.)
+    """
+   
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    if a.ndim != 1 or a.shape != b.shape:
+        raise ValueError("a and b must be 1-D arrays of the same length")
+    with np.errstate(invalid="ignore"):
+        n_a_greater = int(np.sum(a > b))
+    finite = np.isfinite(a) & np.isfinite(b)
+    diff = a[finite] - b[finite]
+    n = int(diff.size)
+    result = dict(n=n, n_excluded=int(a.size - n), mean=np.nan, sd=np.nan,
+                  ci_low=np.nan, ci_high=np.nan, median=np.nan, n_a_greater=n_a_greater)
+    # Start with nan everywhere; values stay nan when there is too little data.
+    if n == 0:
+        return result
+    result["mean"] = float(np.mean(diff))
+    result["median"] = float(np.median(diff))
+    if n >= 2:
+        sd = float(np.std(diff, ddof=1))
+        half_width = student_t.ppf((1 + confidence) / 2, n - 1) * sd / np.sqrt(n)
+        result.update(sd=sd, ci_low=result["mean"] - half_width,
+                      ci_high=result["mean"] + half_width)
+        # ddof=1 gives the sample standard deviation (divide by n-1); student_t.ppf gives
+        # the critical value of the t distribution.
+    return result
