@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from src.data import make_ecg
-from src.metrics import mse, snr_db
+from src.metrics import mse, peak_amplitude_error, r_peak_indices, snr_db
+
 
 
 def test_hand_computed_mse_and_snr():
@@ -53,3 +54,30 @@ def test_invalid_arguments_raise(clean, estimate, start):
 
     with pytest.raises(ValueError):
         snr_db(clean, estimate, start=start)
+
+
+
+def test_r_peaks_found_once_per_beat():
+    """Property: one R peak per beat (beats every 0.75-1.05 s over 12 s), each of height about 1."""
+   
+    clean, _, _ = make_ecg(0)
+    peaks = r_peak_indices(clean)
+    assert 10 <= len(peaks) <= 16
+    np.testing.assert_allclose(clean[peaks], 1.0, atol=0.05)
+
+
+def test_peak_error_hand_checked():
+    """Exact estimate gives 0; halving the signal gives the mean of half the peak heights."""
+   
+    clean, _, _ = make_ecg(0)
+    peaks = r_peak_indices(clean)
+    assert peak_amplitude_error(clean, clean) == 0.0
+    assert peak_amplitude_error(clean, 0.5 * clean) == pytest.approx(np.mean(0.5 * clean[peaks]))
+
+
+def test_peak_error_limiting_cases():
+    """Limiting cases: no peak after start gives nan; a non-finite estimate gives inf."""
+   
+    clean, _, _ = make_ecg(0)
+    assert np.isnan(peak_amplitude_error(clean, clean, start=len(clean) - 1))
+    assert peak_amplitude_error(clean, np.full_like(clean, np.inf)) == np.inf
