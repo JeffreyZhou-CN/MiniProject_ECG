@@ -1,0 +1,30 @@
+{
+  "name": "final",
+  "description": "Full comparison: parameters tuned on 10 validation recordings at scale 1.0, then 20 independent test recordings per condition.",
+  "output_dir": "results/final",
+  "fs": 250,
+  "seconds": 12,
+  "warmup_seconds": 1.0,
+  "eps": 1e-6,
+  "development_seeds": {"start": 0, "count": 20},
+  "validation": {
+    "seeds": {"start": 100, "count": 10},
+    "scale": 1.0
+  },
+  "grid": {
+    "M": [2, 3, 4, 8, 16],
+    "lms_mu": [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2],
+    "nlms_mu": [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 1.5]
+  },
+  "test": {
+    "seeds": {"start": 1000, "count": 20},
+    "conditions": [
+      {"name": "scale_0.3", "scale": 0.3},
+      {"name": "scale_1.0", "scale": 1.0},
+      {"name": "scale_3.0", "scale": 3.0},
+      {"name": "pathway_change", "scale": 1.0, "pathway_after": [-0.2, 0.3, 0.1], "change_time": 6.0},
+      {"name": "leakage", "scale": 1.0, "leakage": 0.2}
+    ]
+  },
+  "timing": {"recordings": 5, "repeats": 5}
+}
