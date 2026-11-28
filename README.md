@@ -17,7 +17,42 @@ The modification normalises the LMS step size by the energy of the reference inp
 discovery. The two methods are compared on the same inputs using reproducible experiments.
 
 All data are synthetic; no clinical claims are made.
+## Method
 
+**Signal model** (course guide). At sample $n$, the measured signal is
+$d_n = s_n + v_n + \text{noise}$, where $s$ is the clean ECG and the interference $v$ is the
+reference $r$ passed through an unknown 3-tap pathway. The filters see only $d$ and $r$; the clean
+ECG is used only for scoring.
+
+**Filter.** With $\mathbf{x}_n = [r_n, r_{n-1}, \dots, r_{n-M+1}]^T$ (zeros before the start) and
+weights $\mathbf{w}_0 = \mathbf{0}$, each sample computes the interference estimate
+$y_n = \mathbf{w}_n^T \mathbf{x}_n$ and the output $e_n = d_n - y_n$, which is the ECG estimate.
+Only the weight update differs:
+
+| Method | Update | File |
+|---|---|---|
+| Baseline LMS | $\mathbf{w} \leftarrow \mathbf{w} + \mu\, e_n \mathbf{x}_n$ | [`src/baseline.py`](src/baseline.py) |
+| Modified NLMS | $\mathbf{w} \leftarrow \mathbf{w} + \dfrac{\mu}{\epsilon + \mathbf{x}_n^T \mathbf{x}_n}\, e_n \mathbf{x}_n$ | [`src/modified.py`](src/modified.py) |
+| Ablation | $\mathbf{w} \leftarrow \mathbf{w} + \dfrac{\mu}{\epsilon + E}\, e_n \mathbf{x}_n$, fixed $E$ | `nlms_filter(..., normalize=False, reference_energy=E)` |
+
+The update follows the course guide's half-squared-error convention; papers that use the full
+squared error write $2\mu$, and the factor of two is absorbed into $\mu$.
+
+**Why the change may help.** The usable LMS step size depends on the reference power (roughly
+$\mu < 2 / (M P_r)$), so a step tuned at one reference amplitude adapts slowly at a smaller one and
+fluctuates or diverges at a larger one. NLMS divides by the input energy; with $\epsilon = 0$ its
+output is exactly unchanged when the reference is scaled (tested in
+[`tests/test_modified.py`](tests/test_modified.py)).
+
+**Predictions, recorded before the final test** ([`docs/progress.md`](docs/progress.md)): NLMS should
+help when the reference amplitude differs from the tuning amplitude; it may hurt with a very weak
+reference; at the tuning amplitude LMS may be as good.
+
+**Key assumption.** The reference must not contain the ECG. If it does (leakage), the filter also
+removes part of the ECG; this is tested as a failure case.
+
+**Cost.** Both filters need $O(M)$ operations and storage per sample. NLMS adds one length-$M$ dot
+product and one division per sample.
 
 ## Repository layout
 
@@ -104,3 +139,51 @@ write to `results/final/` (folders are created automatically):
 All metrics are deterministic: the same configuration gives the same values on any machine up to
 floating-point rounding. Runtimes depend on the machine, so re-running overwrites `timing.csv` with
 slightly different times; the submitted values are those in this repository.
+
+
+## Experimental protocol
+
+All settings are in [`configs/final.json`](configs/final.json), fixed before the final test was run.
+
+**Data.** Each seed gives one independent 12 s recording at 250 Hz (3000 samples) from the course
+guide's generator. Recordings are split as whole recordings; the code checks that the splits are
+disjoint.
+
+| Split | Seeds | Use |
+|---|---|---|
+| Development | 0–19 | Writing and debugging code, unit tests |
+| Validation | 100–109 | Selecting parameters only (reference scale 1.0) |
+| Test | 1000–1019 | Final comparison only: 20 paired recordings per condition |
+
+**"Training" and tuning.** Both filters adapt online; weights are reset to zero for every recording.
+Parameters are chosen by grid search on the validation recordings, maximising the mean output SNR
+after the warm-up. Both methods get the same budget: $M \in \{2, 3, 4, 8, 16\}$ and 8 step sizes each
+(LMS $\mu$ from 0.001 to 0.2, NLMS $\mu$ from 0.01 to 1.5, since NLMS steps are dimensionless).
+$\epsilon = 10^{-6}$ is fixed, not tuned. The ablation reuses the NLMS $(M, \mu)$ with $E$ equal to the
+mean input energy on the validation recordings, and gets no extra tuning. Clean test signals are
+never used for any choice.
+
+**Test conditions.** Parameters are tuned at reference scale 1.0 and then frozen, so the other
+scales test an amplitude not seen during tuning.
+
+| Condition | Setting | Purpose |
+|---|---|---|
+| `scale_0.3`, `scale_1.0`, `scale_3.0` | Reference (and interference) amplitude | Three difficulty settings |
+| `pathway_change` | At 6 s the pathway changes from [0.35, −0.15, 0.08] to [−0.2, 0.3, 0.1] | Stress: re-adaptation |
+| `leakage` | The reference contains ECG: $r \leftarrow r + 0.2\,s$ | Stress: key assumption violated |
+
+**Metrics** (after a 1 s warm-up unless stated). The **primary metric, declared in advance, is the
+output SNR in dB (larger is better)**:
+$\text{SNR} = 10\log_{10}\left(\sum_n s_n^2 / \sum_n (\hat{s}_n - s_n)^2\right)$, with $\hat{s} = e$.
+The input SNR ($\hat{s} = d$) is reported for comparison. Also reported: MSE; mean absolute error
+at the true R peaks (peak distortion); SNR during the warm-up (adaptation speed); SNR in the first
+second after the pathway change (re-adaptation).
+
+**Uncertainty.** For each condition, the paired difference (same recording, same signals) is
+computed per recording and summarised by its mean and a 95% Student-t interval over the 20 test
+recordings. Samples within a recording are never treated as independent. A diverged run would be
+counted separately and excluded from the interval; none occurred.
+
+**Timing.** On the same machine, each method runs once as a warm-up and then 5 times on each of 5
+test recordings; the median and quartiles are reported. Only the filter is timed; neither filter has
+a separate setup step, and signal generation is excluded.
