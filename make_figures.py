@@ -22,7 +22,7 @@ import numpy as np  # noqa: E402
 
 from src.data import make_ecg  # noqa: E402
 from src.experiment import expand_seeds, run_method  # noqa: E402
-from src.metrics import snr_db  # noqa: E402
+from src.metrics import r_peak_indices, snr_db  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 
@@ -226,6 +226,73 @@ def figure_adaptation(results_dir, out_dir):
     fig.savefig(out_dir / "fig3_adaptation.png", dpi=150)
     plt.close(fig)
 
+def figure_failures(results_dir, out_dir):
+    """Figure 4: (a) R-peak-locked mean error at scale 0.3; (b) output SNR with and without leakage."""
+   
+    config, params = load_run(results_dir)
+    fs, eps = config["fs"], config["eps"]
+    warmup = int(round(config["warmup_seconds"] * fs))
+    seeds = expand_seeds(config["test"]["seeds"])
+    before, after = int(0.25 * fs), int(0.40 * fs)
+    lags_ms = 1000 * np.arange(-before, after) / fs
+
+    segments = {"lms": [], "nlms": []}
+    beats = []
+    condition = next(c for c in config["test"]["conditions"] if c["name"] == "scale_0.3")
+    for seed in seeds:
+        clean, measured, reference = generate(config, seed, condition)
+        peaks = [p for p in r_peak_indices(clean, start=warmup, fs=fs) if p + after <= len(clean)]
+        for method in segments:
+            error = run_method(method, measured, reference, params[method], eps) - clean
+            segments[method].extend(error[p - before:p + after] for p in peaks)
+        beats.extend(clean[p - before:p + after] for p in peaks)
+    # (a) Find every R peak after the warm-up in each test recording and cut the error
+    # e - s from -250 to +400 ms around each peak.
+
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(9.0, 3.8), gridspec_kw={"width_ratios": [1.5, 1]})
+    for method in segments:
+        ax_a.plot(lags_ms, np.mean(segments[method], axis=0), color=COLOURS[method], lw=1.4,
+                  label=LABELS[method])
+    ax_a.plot(lags_ms, 0.04 * np.mean(beats, axis=0) - 0.05, color="black", lw=0.8, ls="--",
+              label="clean beat (x0.04, shifted; timing only)")
+    ax_a.axhline(0, color="grey", lw=0.8)
+    ax_a.set_title(f"(a) Reference scale 0.3: mean error around R peaks\n"
+                   f"({len(beats)} beats from {len(seeds)} test recordings)", loc="left", fontsize=10)
+    ax_a.set_xlabel("time relative to R peak (ms)")
+    ax_a.set_ylabel("mean error e - s (a.u.)")
+    ax_a.legend(loc="upper right", fontsize=7.5)
+    # Average the error segments of all beats: random noise cancels out, while distortion
+    # that appears at every beat remains.
+    # The dashed line is the mean clean beat, scaled down and shifted, used only to show
+    # where in the beat the error occurs.
+
+    cases = read_csv(results_dir / "cases.csv")
+    for i, method in enumerate(("lms", "nlms")):
+        values = [np.array([float(r["snr_out_db"]) for r in sorted(cases, key=lambda r: int(r["seed"]))
+                            if r["condition"] == name and r["method"] == method])
+                  for name in ("scale_1.0", "leakage")]
+        x = np.array([0.0, 1.0]) + (i - 0.5) * 0.18
+        for v0, v1 in zip(*values):
+            ax_b.plot(x, [v0, v1], color=COLOURS[method], alpha=0.25, lw=0.8)
+        means = [v.mean() for v in values]
+        ax_b.plot(x, means, color=COLOURS[method], marker="o", ms=6, lw=2, label=LABELS[method])
+        ax_b.annotate(f"{means[1] - means[0]:+.1f} dB", (x[1], means[1]), xytext=(8, 0),
+                      textcoords="offset points", va="center", fontsize=8)
+    # (b) Read from cases.csv the output SNR of the same test recordings without and with
+    # leakage;
+    # thin lines join the same recording, the thick line is the mean, labelled with the
+    # average change in dB. The two methods are offset slightly so they do not overlap.
+    ax_b.set_xticks([0, 1], ["no leakage\n(scale 1.0)", "leakage\nr <- r + 0.2 s"])
+    ax_b.set_xlim(-0.4, 1.6)
+    ax_b.set_ylabel("output SNR (dB)")
+    ax_b.set_title("(b) Assumption violated:\nECG leaks into the reference", loc="left", fontsize=10)
+    ax_b.legend(loc="lower left", fontsize=7.5)
+
+    fig.suptitle("Where the methods struggle (synthetic data)", x=0.01, ha="left", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(out_dir / "fig4_failure_cases.png", dpi=150)
+    plt.close(fig)
+
 def main():
     """Command-line entry point."""
     # Command-line entry point: read a results folder and save the figures in its
@@ -239,6 +306,7 @@ def main():
     figure_example(results_dir, out_dir)
     figure_paired(results_dir, out_dir)
     figure_adaptation(results_dir, out_dir)
+    figure_failures(results_dir, out_dir)
     print(f"figures written to {out_dir}")
 
 
