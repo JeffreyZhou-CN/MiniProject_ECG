@@ -89,3 +89,21 @@ Decisions, problems and next steps. Newest entries at the bottom.
 **Next steps**
 
 Evaluation metrics with tests.
+
+
+---
+
+## 2026-11-25 — Evaluation metrics
+
+**Done**
+
+- `src/metrics.py`: `mse`, `snr_db` (−inf for a diverged output), `r_peak_indices` and
+  `peak_amplitude_error` (distortion at true R peaks), `paired_difference` (mean, sd, 95%
+  Student-t interval, median, count of a > b).
+- Uncertainty is computed across independent recordings (one value per seed), never across
+  samples within a recording. Diverged pairs are excluded from the interval and counted.
+- 13 new tests (44 in total).
+
+**Next steps**
+
+1. Experiment: validation-only parameter selection, test evaluation, configs and a runner script.
