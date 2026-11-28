@@ -11,9 +11,11 @@ import argparse
 import csv
 import json
 from pathlib import Path
-
+import numpy as np
 from src.data import make_ecg
 from src.experiment import (METHODS, check_disjoint, evaluate_case, expand_seeds, mean_input_energy, select_parameters)
+from src.metrics import paired_difference
+
 
 ROOT = Path(__file__).resolve().parent
 # Absolute path of the repository root. Output paths start from here, so the script
@@ -100,6 +102,47 @@ def evaluate_test_cases(config, params):
                 # **metrics unpacks all metric entries into this row.
     return rows
 
+def _finite_mean(values):
+    """Mean of the finite values only (nan if there are none)."""
+   
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    return float(np.mean(values)) if values.size else np.nan
+
+
+def summarise(rows, condition_names):
+    """Per-method means and paired differences (NLMS - LMS, NLMS - ablation) per condition.
+
+    Returns
+    -------
+    summary : list of dict (One row per condition x method with mean metrics and divergence count.)
+    paired : list of dict (One row per condition x comparison x metric, from paired_difference.)
+    """
+    
+    summary, paired = [], []
+    for name in condition_names:
+        by_method = {method: sorted((r for r in rows if r["condition"] == name and r["method"] == method),
+                                    key=lambda r: r["seed"])
+                     for method in METHODS}
+       
+        # Sort by seed so that the i-th result of each method comes from the same recording.
+        for method in METHODS:
+            cases = by_method[method]
+            summary.append({
+                "condition": name, "method": method, "n_cases": len(cases),
+                "n_diverged": sum(r["diverged"] for r in cases),
+                **{metric: _finite_mean([r[metric] for r in cases])
+                   for metric in ("snr_in_db", "snr_out_db", "peak_error",
+                                  "snr_warmup_db", "snr_post_change_db")},
+            })
+        for a, b in (("nlms", "lms"), ("nlms", "nlms_ablation")):
+            for metric in ("snr_out_db", "peak_error"):
+                stats = paired_difference([r[metric] for r in by_method[a]],
+                                          [r[metric] for r in by_method[b]])
+                paired.append({"condition": name, "comparison": f"{a} - {b}",
+                               "metric": metric, **stats})
+    return summary, paired
+
 
 def main():
     """Command-line entry point."""
@@ -123,6 +166,17 @@ def main():
     write_csv(out_dir / "cases.csv", rows)
     print(f"evaluated {len(rows)} cases -> {out_dir / 'cases.csv'}")
     # Evaluate on the test set and save one row per case.
+
+    names = [condition["name"] for condition in config["test"]["conditions"]]
+    summary, paired = summarise(rows, names)
+    write_csv(out_dir / "summary.csv", summary)
+    write_csv(out_dir / "paired.csv", paired)
+    print("\nNLMS - LMS, output SNR (dB): mean [95% CI]")
+    for row in paired:
+        if row["comparison"] == "nlms - lms" and row["metric"] == "snr_out_db":
+            print(f"  {row['condition']:15s} {row['mean']:+6.2f} [{row['ci_low']:+6.2f}, {row['ci_high']:+6.2f}]")
+    # Summarise, save both tables and print the main result: the NLMS - LMS difference in
+    # output SNR for each condition.
 
 if __name__ == "__main__":
     main()
