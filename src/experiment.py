@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from src.metrics import snr_db
 from src.baseline import lms_filter
 from src.modified import nlms_filter
 
@@ -39,3 +40,39 @@ def run_method(method, measured, reference, params, eps=1e-6):
         else:
             raise ValueError(f"unknown method {method!r}")
     return e
+
+
+
+def select_parameters(method, filter_lengths, step_sizes, recordings, warmup, eps=1e-6):
+    """Grid search on validation recordings; criterion = mean output SNR after warm-up.
+
+    Parameters
+    ----------
+    method : str ("lms" or "nlms".)
+    filter_lengths : sequence of int (Candidate filter lengths M.)
+    step_sizes : sequence of float (Candidate step sizes mu.)
+    recordings : list of (clean, measured, reference) tuples (Validation recordings only.)
+    warmup : int (Number of initial samples excluded from scoring.)
+    eps : float (NLMS regulariser.)
+
+    Returns
+    -------
+    best : dict ({"M", "mu", "score"} of the highest mean validation SNR.)
+    table : list of dict (One row per (M, mu) with its mean validation SNR, for saving.)
+    """
+    # Grid search: for each (M, mu) pair, compute the output SNR on every validation
+    # recording and use the mean as its score; the highest score wins.
+    # Only validation recordings may be passed in; if any recording diverges the mean is
+    # -inf, so that pair cannot be chosen.
+    best = None
+    table = []
+    for M in filter_lengths:
+        for mu in step_sizes:
+            scores = [snr_db(clean, run_method(method, measured, reference,
+                                               {"M": M, "mu": mu}, eps), start=warmup)
+                      for clean, measured, reference in recordings]
+            score = float(np.mean(scores))
+            table.append({"method": method, "M": M, "mu": mu, "mean_val_snr_db": score})
+            if best is None or score > best["score"]:
+                best = {"M": int(M), "mu": float(mu), "score": score}
+    return best, table

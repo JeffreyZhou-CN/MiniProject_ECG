@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from src.baseline import lms_filter
-from src.experiment import run_method
+from src.data import make_ecg
+from src.experiment import run_method, select_parameters
 from src.modified import nlms_filter
 
 
@@ -34,3 +35,25 @@ def test_run_method_unknown_name_raises():
     d, r = _signals()
     with pytest.raises(ValueError):
         run_method("nmls", d, r, {"M": 3, "mu": 0.1})
+
+
+
+def test_select_parameters_returns_best_of_table():
+    """The selected (M, mu) is the row with the highest mean SNR, and every grid point is listed."""
+
+    recordings = [make_ecg(seed) for seed in (100, 101)]
+    best, table = select_parameters("lms", [2, 3], [0.01, 0.05], recordings, warmup=250)
+    assert len(table) == 4
+    top = max(table, key=lambda row: row["mean_val_snr_db"])
+    assert (best["M"], best["mu"]) == (top["M"], top["mu"])
+    assert best["score"] == top["mean_val_snr_db"]
+
+
+def test_select_parameters_never_picks_a_diverging_step():
+    """A step size that makes LMS diverge scores -inf and is not selected."""
+
+    recordings = [make_ecg(100)]
+    best, table = select_parameters("lms", [3], [0.05, 5.0], recordings, warmup=250)
+    diverged = [row for row in table if row["mu"] == 5.0][0]
+    assert diverged["mean_val_snr_db"] == -np.inf
+    assert best["mu"] == 0.05
