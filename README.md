@@ -187,3 +187,70 @@ counted separately and excluded from the interval; none occurred.
 **Timing.** On the same machine, each method runs once as a warm-up and then 5 times on each of 5
 test recordings; the median and quartiles are reported. Only the filter is timed; neither filter has
 a separate setup step, and signal generation is excluded.
+
+
+## Results
+
+All numbers come from [`results/final/`](results/final/) (synthetic data, 20 test recordings per
+condition). Both methods selected $M = 3$, the true pathway length; LMS $\mu = 0.05$, NLMS
+$\mu = 0.1$; the ablation's fixed energy is $E = 1.624$. No run diverged.
+
+**Output SNR in dB, mean over the test recordings** (input = no filtering):
+
+| Condition | Input | LMS | NLMS | Ablation | NLMS − LMS, mean [95% CI] |
+|---|---:|---:|---:|---:|---|
+| Scale 0.3 | 10.26 | 17.93 | 17.52 | 18.13 | **−0.41** [−0.54, −0.29] |
+| Scale 1.0 (tuning scale) | 0.22 | 17.17 | 17.12 | 17.03 | −0.05 [−0.18, +0.07] |
+| Scale 3.0 | −9.28 | 3.52 | 14.77 | 0.74 | **+11.24** [+10.90, +11.59] |
+| Pathway change | −1.82 | 11.93 | 12.52 | 12.41 | +0.59 [+0.49, +0.70] |
+| Leakage | 0.22 | 13.38 | 13.85 | 12.97 | +0.47 [+0.31, +0.63] |
+
+Runtime per 12 s recording (median, tested machine): LMS 2.96 ms, NLMS 4.03 ms (+36 %),
+ablation 2.93 ms.
+
+![Paired comparison of output SNR](results/final/figures/fig2_paired_snr.png)
+
+**Interpretation**
+
+- **The hypothesis holds where it was expected to matter.** At three times the tuning amplitude,
+  the fixed LMS step is too large for the stronger reference: its weights keep fluctuating, the
+  output SNR is only 3.5 dB and the R peaks are badly distorted (mean R-peak error 0.43). NLMS keeps
+  14.8 dB, better in all 20 recordings.
+- **The ablation identifies the cause.** With the normalisation switched off but the same $(M, \mu)$,
+  the scale-3.0 result is 14.0 dB worse than NLMS, so the gain comes from the per-sample
+  normalisation, not from a different step-size scale.
+- **No clear difference at the tuning amplitude** (the interval contains zero), as predicted.
+- **Negative result with a weak reference (scale 0.3), as predicted.** NLMS adapts faster (SNR in the
+  warm-up second 15.8 vs 12.4 dB) but its steady-state SNR is slightly lower and it distorts the QRS
+  complex (mean R-peak error 0.050 vs 0.021). With a weak reference the normalised step is large,
+  so every R peak, which is a burst of error for the filter, moves the weights strongly. This is a
+  trade-off between adaptation speed and steady-state accuracy.
+- **Leakage violates the key assumption** and lowers both methods by about 3.5 dB
+  (LMS −3.8 dB, NLMS −3.3 dB): the filter removes part of the ECG it should preserve.
+- **After the pathway change** both methods re-adapt over several seconds; NLMS is slightly better.
+- **Cost.** NLMS needs about 36 % more time per recording for its extra dot product and division.
+
+| Figure | Shows |
+|---|---|
+| [Fig. 1](results/final/figures/fig1_example.png) | One recording (first test seed, scale 3.0): input, LMS and NLMS outputs vs. the clean ECG |
+| [Fig. 2](results/final/figures/fig2_paired_snr.png) | Paired SNR differences per recording with 95% intervals, every condition (shown above) |
+| [Fig. 3](results/final/figures/fig3_adaptation.png) | Mean error power over time: scale 0.3, scale 3.0, pathway change |
+| [Fig. 4](results/final/figures/fig4_failure_cases.png) | Failure cases: QRS distortion at scale 0.3; loss under leakage |
+
+## Limitations
+
+- **Synthetic data only.** The ECG is a sum of Gaussian pulses with a regular rhythm; real ECG has
+  morphology changes, baseline wander, muscle noise and arrhythmias. No clinical claim is made, and
+  success here is not evidence of clinical safety.
+- **Simple interference model.** A linear, time-invariant 3-tap path from an ideal reference, which
+  the chosen $M = 3$ matches exactly. Longer, non-linear or drifting paths and changes in the line
+  frequency were not tested, apart from one abrupt pathway change.
+- **Tuning at one amplitude.** Parameters were tuned at scale 1.0 and frozen. An LMS re-tuned for
+  each amplitude could close much of the gap at scale 3.0; the result shows robustness to an
+  amplitude not seen during tuning, not superiority when re-tuning is possible.
+- **Fixed regulariser.** $\epsilon = 10^{-6}$ was not varied; the weak-reference behaviour of NLMS may
+  depend on it.
+- **Statistics.** 20 recordings per condition; t-intervals assume roughly normal paired differences;
+  no correction for comparing several conditions.
+- **Runtime** is for a pure-Python loop and mostly reflects interpreter overhead; the ratio between
+  methods is more meaningful than the absolute times.
