@@ -107,3 +107,44 @@ Evaluation metrics with tests.
 **Next steps**
 
 1. Experiment: validation-only parameter selection, test evaluation, configs and a runner script.
+
+
+---
+
+## 2026-11-28 — Experiment and final results
+
+**Done**
+
+- Stress options in the data generator: pathway change at a given time, and ECG leakage into the
+  reference (`r <- r + leakage * s`). Neither draws extra random numbers.
+- `src/experiment.py` and `run_experiments.py`, built in small tested steps: config checks,
+  validation-only grid search, ablation energy, test evaluation, summaries, timing, environment.
+- Ran `configs/final.json` on my laptop (Apple M5, Python 3.12.16); results in `results/final/`.
+
+**Protocol (fixed in the configs before running the final test)**
+
+- Tune at reference scale 1.0 on validation seeds 100–109, then freeze. Equal budgets:
+  M in {2, 3, 4, 8, 16} and 8 step sizes for each method. eps = 1e-6 fixed.
+- Ablation: NLMS (M, mu) with a fixed step mu / (eps + E), E = mean validation input energy.
+- Test: 5 conditions (scale 0.3 / 1.0 / 3.0, pathway change at 6 s, leakage 0.2),
+  20 recordings each (seeds 1000–1019). Seed splits are checked to be disjoint in code.
+
+**Results**
+
+- Selected: LMS M = 3, mu = 0.05; NLMS M = 3, mu = 0.1. Both chose the true pathway length.
+- NLMS − LMS output SNR, mean [95% CI]: scale 0.3 −0.41 [−0.54, −0.29] dB; scale 1.0 −0.05
+  [−0.18, +0.07] dB; scale 3.0 +11.24 [+10.90, +11.59] dB; pathway change +0.59 dB;
+  leakage +0.47 dB. No run diverged.
+- Ablation at scale 3.0 is 14.0 dB worse than NLMS, so the gain comes from the per-sample
+  normalisation, not from a different step-size scale.
+- Against my predictions: confirmed at scale 3.0 and at the tuning scale; at scale 0.3 NLMS is
+  slightly worse, as predicted for weak references. It adapts faster (warm-up SNR 15.8 vs
+  12.4 dB) but has a larger R-peak error (0.050 vs 0.021).
+- Leakage lowers both methods by about 3.5 dB: the assumption that the reference contains no ECG
+  is violated.
+- Runtime per 12 s recording: LMS 2.96 ms, NLMS 4.03 ms (+36 %), ablation 2.93 ms.
+
+**Next steps**
+
+1. Figures generated from the saved results.
+2. Complete the README. 
