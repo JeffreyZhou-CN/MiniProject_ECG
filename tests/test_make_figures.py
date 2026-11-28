@@ -1,7 +1,7 @@
 """Checks for the figure script (make_figures.py)."""
 
 
-from make_figures import ROOT, figure_paired
+from make_figures import ROOT, figure_example, figure_paired
 
 
 def test_figure_paired_writes_a_png(tmp_path):
@@ -12,4 +12,14 @@ def test_figure_paired_writes_a_png(tmp_path):
     # project is left untouched.
     figure_paired(ROOT / "results" / "final", tmp_path)
     output = tmp_path / "fig2_paired_snr.png"
+    assert output.exists() and output.stat().st_size > 10_000
+
+
+
+def test_figure_example_writes_a_png(tmp_path):
+    """Figure 1 is created from the saved configuration and parameters."""
+    # Generate figure 1 from the saved configuration and parameters and check that the
+    # image file exists and is not empty.
+    figure_example(ROOT / "results" / "final", tmp_path)
+    output = tmp_path / "fig1_example.png"
     assert output.exists() and output.stat().st_size > 10_000

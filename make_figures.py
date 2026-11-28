@@ -11,6 +11,7 @@ saved CSV files; no numbers are typed in by hand.
 
 import argparse
 import csv
+import json
 from pathlib import Path
 
 import matplotlib
@@ -18,6 +19,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+
+from src.data import make_ecg  # noqa: E402
+from src.experiment import expand_seeds, run_method  # noqa: E402
+from src.metrics import snr_db  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 
@@ -37,6 +42,13 @@ def read_csv(path):
     """Read a CSV file into a list of dicts (all values as strings)."""
     with open(path, newline="") as handle:
         return list(csv.DictReader(handle))
+
+def load_run(results_dir):
+    """Read the configuration and the selected parameters saved with the results."""
+    
+    config = json.loads((results_dir / "config_used.json").read_text())
+    params = json.loads((results_dir / "selected_params.json").read_text())
+    return config, params
 
 
 def figure_paired(results_dir, out_dir):
@@ -94,6 +106,55 @@ def figure_paired(results_dir, out_dir):
     # Add the axis label, title and caption, save as a 150 dpi PNG, then close the figure
     # to free memory.
 
+def figure_example(results_dir, out_dir):
+    """Figure 1: input, LMS output and NLMS output for the first test seed at scale 3.0."""
+
+    # Figure 1: one recording (first test seed, scale 3.0): input, LMS output and NLMS
+    # output, each compared with the clean ECG.
+    config, params = load_run(results_dir)
+    fs, seconds, eps = config["fs"], config["seconds"], config["eps"]
+    warmup = int(round(config["warmup_seconds"] * fs))
+    seed = expand_seeds(config["test"]["seeds"])[0]
+    clean, measured, reference = make_ecg(seed, seconds=seconds, fs=fs, scale=3.0)
+    outputs = {m: run_method(m, measured, reference, params[m], eps) for m in ("lms", "nlms")}
+   
+    # Regenerate this recording with the saved configuration and run the filters with
+    # the selected parameters through the same run_method used in the experiment.
+
+    t = np.arange(len(clean)) / fs
+    window = (t >= 8.0) & (t < 10.0)
+    panels = [("Measured signal d (input)", measured, "grey"),
+              ("LMS (baseline) output e", outputs["lms"], COLOURS["lms"]),
+              ("NLMS (modified) output e", outputs["nlms"], COLOURS["nlms"])]
+
+    # Show only 8-10 s (about two beats) so the details are visible.
+
+    fig, axes = plt.subplots(3, 1, figsize=(7.0, 5.6), sharex=True, sharey=True)
+    for ax, (title, signal, colour) in zip(axes, panels):
+        ax.plot(t[window], signal[window], color=colour, lw=1.0, label="signal named in title")
+        ax.plot(t[window], clean[window], color="black", lw=0.9, ls="--",
+                label="clean ECG s (ground truth)")
+        ax.set_title(f"{title}: SNR {snr_db(clean, signal, start=warmup):.1f} dB "
+                     "(whole recording after warm-up)", loc="left", fontsize=10)
+        ax.set_ylabel("amplitude (a.u.)")
+
+    # In each panel the coloured line is the signal and the black dashed line is the clean
+    # ECG; the title gives the output SNR of this recording.
+    # sharex/sharey give all three panels the same axis scales, so they compare directly.
+
+    axes[-1].legend(loc="upper right", ncol=2, fontsize=8)
+    axes[-1].set_xlabel("time (s); 8-10 s of the 12 s recording shown")
+    fig.suptitle(f"Representative recording: test seed {seed}, reference scale 3.0 (synthetic data)",
+                 x=0.01, ha="left", fontsize=11)
+    fig.text(0.01, 0.005, f"Parameters chosen on validation data at scale 1.0: "
+             f"LMS M={params['lms']['M']}, mu={params['lms']['mu']:g}; "
+             f"NLMS M={params['nlms']['M']}, mu={params['nlms']['mu']:g}.", fontsize=7)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
+    fig.savefig(out_dir / "fig1_example.png", dpi=150)
+    plt.close(fig)
+
+    # The caption states that the parameters were chosen on validation data at scale 1.0;
+    # then save and close.
 
 def main():
     """Command-line entry point."""
@@ -105,6 +166,7 @@ def main():
     results_dir = ROOT / args.results
     out_dir = results_dir / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
+    figure_example(results_dir, out_dir)
     figure_paired(results_dir, out_dir)
     print(f"figures written to {out_dir}")
 
