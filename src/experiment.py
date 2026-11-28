@@ -151,3 +151,37 @@ def evaluate_case(method, clean, measured, reference, params, warmup, fs=250, ep
     }
     # snr_warmup_db is the SNR during the first second (the warm-up), measuring how
     # quickly the filter starts to adapt.
+
+
+
+
+def expand_seeds(spec):
+    """Seeds from a config entry {"start": a, "count": k}, i.e. [a, a+1, ..., a+k-1].
+
+    Parameters
+    ----------
+    spec : dict ({"start": int, "count": int}.)
+
+    Returns
+    -------
+    list of int (The seeds, one per independent ECG recording.)
+    """
+    # Expand a config entry {"start": a, "count": k} into the seed list [a, a+1, ..., a+k-1].
+    return list(range(int(spec["start"]), int(spec["start"]) + int(spec["count"])))
+
+
+def check_disjoint(*seed_lists):
+    """Raise ValueError if any seed appears in more than one split (data-leakage guard).
+
+    Parameters
+    ----------
+    *seed_lists : lists of int (e.g. development, validation and test seeds.)
+    """
+    # Check that the seed groups do not overlap; raise if any seed appears in two groups,
+    # to prevent data leakage.
+    seen = set()
+    for seeds in seed_lists:
+        overlap = seen.intersection(seeds)
+        if overlap:
+            raise ValueError(f"seeds used in more than one split: {sorted(overlap)}")
+        seen.update(seeds)

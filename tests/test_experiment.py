@@ -5,7 +5,7 @@ import pytest
 
 from src.baseline import lms_filter
 from src.data import make_ecg
-from src.experiment import evaluate_case, mean_input_energy, run_method, select_parameters
+from src.experiment import (check_disjoint, evaluate_case, expand_seeds, mean_input_energy,run_method, select_parameters)
 from src.modified import nlms_filter
 
 
@@ -112,3 +112,22 @@ def test_evaluate_case_post_change_window():
     result = evaluate_case("nlms", clean, measured, reference, {"M": 3, "mu": 0.1},
                            warmup=250, change_index=1500)
     assert np.isfinite(result["snr_post_change_db"])
+
+
+
+def test_expand_seeds():
+    """{"start": 100, "count": 3} expands to [100, 101, 102]."""
+    # Hand example of expanding a seed specification.
+    assert expand_seeds({"start": 100, "count": 3}) == [100, 101, 102]
+
+
+def test_check_disjoint_accepts_project_splits_and_rejects_overlap():
+    """The project's splits are disjoint; an overlapping split raises ValueError."""
+    # The project's three seed groups (0-19, 100-109, 1000-1019) do not overlap and pass;
+    # if the validation set accidentally reuses test seeds, it must raise.
+    development = expand_seeds({"start": 0, "count": 20})
+    validation = expand_seeds({"start": 100, "count": 10})
+    test = expand_seeds({"start": 1000, "count": 20})
+    check_disjoint(development, validation, test)
+    with pytest.raises(ValueError):
+        check_disjoint(development, expand_seeds({"start": 1005, "count": 10}), test)
