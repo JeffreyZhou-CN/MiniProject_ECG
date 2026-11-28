@@ -50,6 +50,32 @@ def load_run(results_dir):
     params = json.loads((results_dir / "selected_params.json").read_text())
     return config, params
 
+def generate(config, seed, condition):
+    """Regenerate one recording exactly as in the experiment, for a condition from the config."""
+    
+    return make_ecg(seed, seconds=config["seconds"], fs=config["fs"],
+                    scale=condition.get("scale", 1.0),
+                    pathway_after=condition.get("pathway_after"),
+                    change_time=condition.get("change_time"),
+                    leakage=condition.get("leakage", 0.0))
+
+
+def error_power(clean, estimate, fs, smooth_seconds=0.2):
+    """Causal moving average of the squared error (e - s)^2 over the last smooth_seconds.
+
+    Returns
+    -------
+    ndarray, shape (N,) (Sample n averages samples max(0, n-k+1) ... n, k = smooth_seconds * fs.)
+    """
+
+    k = max(1, int(smooth_seconds * fs))
+    squared = (np.asarray(estimate) - np.asarray(clean)) ** 2
+    cumulative = np.concatenate([[0.0], np.cumsum(squared)])
+    n = np.arange(1, len(squared) + 1)
+    start = np.maximum(n - k, 0)
+    return (cumulative[n] - cumulative[start]) / (n - start)
+    # Window sums from a cumulative sum: the sum of samples a..b-1 is cumsum[b] - cumsum[a],
+    # much faster than summing each window separately.
 
 def figure_paired(results_dir, out_dir):
     """Figure 2: per-recording paired differences in output SNR, one panel per condition."""
@@ -156,6 +182,50 @@ def figure_example(results_dir, out_dir):
     # The caption states that the parameters were chosen on validation data at scale 1.0;
     # then save and close.
 
+def figure_adaptation(results_dir, out_dir):
+    """Figure 3: mean error power over time for scale 0.3, scale 3.0 and the pathway change."""
+    config, params = load_run(results_dir)
+    fs, eps = config["fs"], config["eps"]
+    seeds = expand_seeds(config["test"]["seeds"])
+    t = np.arange(int(config["seconds"] * fs)) / fs
+    names = ["scale_0.3", "scale_3.0", "pathway_change"]
+
+    fig, axes = plt.subplots(len(names), 1, figsize=(7.0, 6.4), sharex=True)
+    for ax, name in zip(axes, names):
+        condition = next(c for c in config["test"]["conditions"] if c["name"] == name)
+        for method in ("lms", "nlms", "nlms_ablation"):
+            curves = []
+            for seed in seeds:
+                clean, measured, reference = generate(config, seed, condition)
+                e = run_method(method, measured, reference, params[method], eps)
+                curves.append(error_power(clean, e, fs))
+            mean_db = 10 * np.log10(np.maximum(np.mean(curves, axis=0), 1e-12))
+            ax.plot(t, mean_db, color=COLOURS[method], lw=1.3, label=LABELS[method])
+            # For each method: compute the error-power curve on every test recording,
+            # average them, convert to dB and plot.
+            # np.maximum(..., 1e-12) avoids taking the log of zero.
+        ax.axvspan(0, config["warmup_seconds"], color="#eeeeee", zorder=0,
+                   label="warm-up (not scored)")
+        if condition.get("change_time") is not None:
+            ax.axvline(condition["change_time"], color="grey", ls="--", lw=0.9)
+            ax.annotate("pathway changes", (condition["change_time"], 0.9),
+                        xycoords=("data", "axes fraction"), xytext=(-4, 0),
+                        textcoords="offset points", ha="right", fontsize=7.5, color="grey")
+    
+        # A grey band marks the warm-up; a dashed line marks the moment of a pathway change.
+        ax.set_title(CONDITION_LABELS[name], loc="left", fontsize=10)
+        ax.set_ylabel("error power (dB)")
+
+    axes[0].legend(loc="upper right", fontsize=7.5, ncol=2)
+    axes[-1].set_xlabel("time (s)")
+    fig.suptitle(f"Adaptation: error power (e - s)^2, 0.2 s causal moving average, "
+                 f"mean of {len(seeds)} test recordings", x=0.01, ha="left", fontsize=10)
+    fig.text(0.01, 0.005, "Lower is better. 0 dB corresponds to an error power of 1 (a.u.)^2.",
+             fontsize=7)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
+    fig.savefig(out_dir / "fig3_adaptation.png", dpi=150)
+    plt.close(fig)
+
 def main():
     """Command-line entry point."""
     # Command-line entry point: read a results folder and save the figures in its
@@ -168,6 +238,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     figure_example(results_dir, out_dir)
     figure_paired(results_dir, out_dir)
+    figure_adaptation(results_dir, out_dir)
     print(f"figures written to {out_dir}")
 
 
