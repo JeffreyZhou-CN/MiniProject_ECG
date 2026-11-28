@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from run_experiments import ROOT, load_config, validate_config
+from run_experiments import ROOT, evaluate_test_cases, load_config, select_all_parameters, validate_config
 
 
 @pytest.mark.parametrize("name", ["smoke", "final"])
@@ -28,3 +28,19 @@ def test_unequal_tuning_budgets_are_rejected():
     config["grid"]["nlms_mu"] = config["grid"]["nlms_mu"][:-1]
     with pytest.raises(ValueError):
         validate_config(config)
+
+
+
+def test_evaluate_test_cases_covers_every_case():
+    """One row per condition x seed x method; post-change SNR only for the pathway condition."""
+
+    config = copy.deepcopy(load_config(ROOT / "configs" / "smoke.json"))
+    config["test"]["seeds"] = {"start": 1000, "count": 2}
+    params, _ = select_all_parameters(config)
+    rows = evaluate_test_cases(config, params)
+    n_conditions = len(config["test"]["conditions"])
+    assert len(rows) == n_conditions * 2 * 3
+    for row in rows:
+        has_change = row["condition"] == "pathway_change"
+        assert has_change == (row["snr_post_change_db"] == row["snr_post_change_db"])
+        # NaN is not equal to itself, so x == x is False exactly when x is NaN.

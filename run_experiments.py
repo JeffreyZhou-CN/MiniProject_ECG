@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from src.data import make_ecg
-from src.experiment import check_disjoint, expand_seeds, mean_input_energy, select_parameters
+from src.experiment import (METHODS, check_disjoint, evaluate_case, expand_seeds, mean_input_energy, select_parameters)
 
 ROOT = Path(__file__).resolve().parent
 # Absolute path of the repository root. Output paths start from here, so the script
@@ -71,6 +71,35 @@ def select_all_parameters(config):
                                  "energy": energy}
     return selected, table
 
+def evaluate_test_cases(config, params):
+    """Run every method on every test recording of every condition, with frozen parameters.
+
+    Returns
+    -------
+    list of dict (One row per condition x seed x method, with all metrics.)
+    """
+
+    fs, seconds, eps = config["fs"], config["seconds"], config["eps"]
+    warmup = int(round(config["warmup_seconds"] * fs))
+    rows = []
+    for condition in config["test"]["conditions"]:
+        change_time = condition.get("change_time")
+        change_index = None if change_time is None else int(round(change_time * fs))
+        # condition.get("key", default) returns the default when the key is absent.
+        for seed in expand_seeds(config["test"]["seeds"]):
+            clean, measured, reference = make_ecg(
+                seed, seconds=seconds, fs=fs, scale=condition.get("scale", 1.0),
+                pathway_after=condition.get("pathway_after"), change_time=change_time,
+                leakage=condition.get("leakage", 0.0))
+            for method in METHODS:
+                metrics = evaluate_case(method, clean, measured, reference, params[method],
+                                        warmup, fs=fs, eps=eps, change_index=change_index)
+                rows.append({"condition": condition["name"], "seed": seed, "method": method,
+                             **metrics})
+          
+                # **metrics unpacks all metric entries into this row.
+    return rows
+
 
 def main():
     """Command-line entry point."""
@@ -90,6 +119,10 @@ def main():
     for method, params in selected.items():
         print(f"{method:14s} {params}")
 
+    rows = evaluate_test_cases(config, selected)
+    write_csv(out_dir / "cases.csv", rows)
+    print(f"evaluated {len(rows)} cases -> {out_dir / 'cases.csv'}")
+    # Evaluate on the test set and save one row per case.
 
 if __name__ == "__main__":
     main()
