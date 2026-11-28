@@ -5,7 +5,7 @@ import pytest
 
 from src.baseline import lms_filter
 from src.data import make_ecg
-from src.experiment import run_method, select_parameters
+from src.experiment import mean_input_energy, run_method, select_parameters
 from src.modified import nlms_filter
 
 
@@ -57,3 +57,24 @@ def test_select_parameters_never_picks_a_diverging_step():
     diverged = [row for row in table if row["mu"] == 5.0][0]
     assert diverged["mean_val_snr_db"] == -np.inf
     assert best["mu"] == 0.05
+
+
+def test_mean_input_energy_hand_computed():
+    """Hand example: r = [1, 2, 3], M = 2 gives energies [1, 5, 13] and mean 19/3."""
+   
+    assert mean_input_energy([[1.0, 2.0, 3.0]], M=2) == pytest.approx(19 / 3)
+
+
+def test_mean_input_energy_matches_filter_loop():
+    """Property: agrees with x·x computed sample by sample with the filters' delay line."""
+    
+    references = [np.random.default_rng(seed).normal(size=200) for seed in (0, 1)]
+    M = 3
+    loop_energies = []
+    for r in references:
+        x = np.zeros(M)
+        for value in r:
+            x[1:] = x[:-1]
+            x[0] = value
+            loop_energies.append(x @ x)
+    assert mean_input_energy(references, M) == pytest.approx(np.mean(loop_energies))

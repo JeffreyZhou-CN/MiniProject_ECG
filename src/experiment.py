@@ -76,3 +76,28 @@ def select_parameters(method, filter_lengths, step_sizes, recordings, warmup, ep
             if best is None or score > best["score"]:
                 best = {"M": int(M), "mu": float(mu), "score": score}
     return best, table
+
+
+
+
+def mean_input_energy(references, M):
+    """Mean of x_n^T x_n over all samples of the given reference signals.
+
+    x_n holds the current and previous M - 1 reference samples (zeros before the start),
+    exactly as inside the filters.
+
+    Parameters
+    ----------
+    references : list of array_like, each shape (N,) (Reference signals, validation only.)
+    M : int (Filter length used by the NLMS method.)
+
+    Returns
+    -------
+    float (Average input-vector energy E, used by the ablation step mu / (eps + E).)
+    """
+    # Compute the average input energy x·x over all samples, for use by the ablation.
+    # x·x is the sum of the last M values of r², i.e. r² convolved with M ones, truncated
+    # to N samples.
+    energies = [np.convolve(np.asarray(r, dtype=float) ** 2, np.ones(M))[:len(r)]
+                for r in references]
+    return float(np.mean(np.concatenate(energies)))
