@@ -14,7 +14,8 @@ PULSES = (
     (0.30, 0.24, 0.065),  # T wave
 )
 
-def make_ecg(seed, seconds=12, fs=250, scale=1.0):
+#def make_ecg(seed, seconds=12, fs=250, scale=1.0):
+def make_ecg(seed, seconds=12, fs=250, scale=1.0,pathway_after=None, change_time=None, leakage=0.0):
     """
     Generate one synthetic recording: d = s + v + noise, v = pathway * r.
     Parameters
@@ -24,6 +25,9 @@ def make_ecg(seed, seconds=12, fs=250, scale=1.0):
     fs : float (Sample rate in Hz.)
     scale : float (Amplitude of the reference (and therefore of the interference).)
 
+    pathway_after : array_like or None (Stress case: pathway used from change_time onwards.)
+    change_time : float or None (Time in s at which the pathway changes; inside the recording.)
+    leakage : float (Stress case: fraction of the clean ECG added to the returned reference.)
     Returns
     -------
     clean : ndarray, shape (N,)  (Clean ECG-like signal s; ground truth)
@@ -44,6 +48,24 @@ def make_ecg(seed, seconds=12, fs=250, scale=1.0):
     phase = rng.uniform(0, 2 * np.pi)
     reference = scale * (np.sin(2 * np.pi * 50 * t + phase) + 0.2 * rng.normal(size=len(t)))
 
+    # interference = np.convolve(reference, PATHWAY, mode="full")[:len(t)]
+    # measured = clean + interference + 0.02 * rng.normal(size=len(t))
+    # return clean, measured, reference
+
     interference = np.convolve(reference, PATHWAY, mode="full")[:len(t)]
+    if (pathway_after is None) != (change_time is None):
+        raise ValueError("pathway_after and change_time must be given together")
+    if pathway_after is not None:
+        if not 0 < change_time < seconds:
+            raise ValueError("change_time must lie inside the recording")
+        later = np.convolve(reference, np.asarray(pathway_after, dtype=float), mode="full")[:len(t)]
+        interference = np.where(t >= change_time, later, interference)
+    # Pathway change: from change_time on, the interference uses the new pathway;
+    # earlier samples are unchanged.
+    # np.where(condition, A, B) takes A where the condition holds and B elsewhere.
+
     measured = clean + interference + 0.02 * rng.normal(size=len(t))
-    return clean, measured, reference
+    return clean, measured, reference + leakage * clean
+    # ECG leakage: the ECG is added only to the returned reference; the interference in
+    # the measured signal is still generated from the ECG-free reference.
+    # Neither option draws extra random numbers, so the same seed gives the same ECG and noise.

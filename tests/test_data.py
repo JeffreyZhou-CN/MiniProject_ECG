@@ -55,3 +55,34 @@ def test_invalid_arguments_raise():
         make_ecg(0, seconds=0)
     with pytest.raises(ValueError):
         make_ecg(0, fs=-250)
+
+
+
+def test_leakage_only_changes_reference():
+    """Stress option: leakage adds leakage * clean to the reference and changes nothing else."""
+
+    clean, measured, reference = make_ecg(5)
+    clean_l, measured_l, reference_l = make_ecg(5, leakage=0.2)
+    np.testing.assert_array_equal(clean_l, clean)
+    np.testing.assert_array_equal(measured_l, measured)
+    np.testing.assert_allclose(reference_l, reference + 0.2 * clean)
+
+
+def test_pathway_change_only_affects_later_samples():
+    """Stress option: before change_time the recording is identical; after it, d changes."""
+
+    clean, measured, reference = make_ecg(6)
+    clean_c, measured_c, reference_c = make_ecg(6, pathway_after=[-0.2, 0.3, 0.1], change_time=6.0)
+    np.testing.assert_array_equal(clean_c, clean)
+    np.testing.assert_array_equal(reference_c, reference)
+    np.testing.assert_array_equal(measured_c[:1500], measured[:1500])
+    assert not np.allclose(measured_c[1500:], measured[1500:])
+
+
+def test_invalid_stress_options_raise():
+    """Edge case: pathway_after without change_time, or a change outside the recording."""
+   
+    with pytest.raises(ValueError):
+        make_ecg(0, pathway_after=[1.0])
+    with pytest.raises(ValueError):
+        make_ecg(0, pathway_after=[1.0], change_time=20.0)       
