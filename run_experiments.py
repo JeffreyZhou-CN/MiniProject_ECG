@@ -10,10 +10,17 @@ Usage :
 import argparse
 import csv
 import json
+import platform
+import subprocess
+import sys
+import time
 from pathlib import Path
+
 import numpy as np
+import scipy
+
 from src.data import make_ecg
-from src.experiment import (METHODS, check_disjoint, evaluate_case, expand_seeds, mean_input_energy, select_parameters)
+from src.experiment import (METHODS, check_disjoint, evaluate_case, expand_seeds, mean_input_energy, select_parameters, time_method)
 from src.metrics import paired_difference
 
 
@@ -143,6 +150,42 @@ def summarise(rows, condition_names):
                                "metric": metric, **stats})
     return summary, paired
 
+def describe_environment():
+    """Python and package versions, operating system and processor of this machine."""
+    
+    machine = platform.processor() or platform.machine()
+    if sys.platform == "darwin":
+        try:
+            machine = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                                     capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    
+    # If the query fails, keep the value from platform rather than stopping the program.
+    return {"python": platform.python_version(), "numpy": np.__version__,
+            "scipy": scipy.__version__, "os": platform.platform(), "machine": machine}
+
+
+def time_all_methods(config, params):
+    """Time each method on the first test recordings at the nominal scale 1.0.
+
+    Returns
+    -------
+    list of dict (One row per method with median and quartile times per recording.)
+    """
+    # Time the three methods on the first few test recordings (scale 1.0); this measures
+    # speed only and selects nothing, so it causes no information leakage.
+    fs, seconds = config["fs"], config["seconds"]
+    seeds = expand_seeds(config["test"]["seeds"])[:config["timing"]["recordings"]]
+    recordings = [make_ecg(seed, seconds=seconds, fs=fs) for seed in seeds]
+    rows = []
+    for method in METHODS:
+        stats = time_method(method, recordings, params[method], config["eps"],
+                            repeats=config["timing"]["repeats"])
+        rows.append({"method": method, "M": params[method]["M"],
+                     "samples_per_recording": int(seconds * fs), "setup_included": False,
+                     **stats})
+    return rows
 
 def main():
     """Command-line entry point."""
@@ -150,7 +193,7 @@ def main():
     parser = argparse.ArgumentParser(description="Compare LMS, NLMS and the ablation.")
     parser.add_argument("--config", required=True, help="path to a JSON configuration file")
     args = parser.parse_args()
-
+    started = time.perf_counter()
     config = load_config(args.config)
     out_dir = ROOT / config["output_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -177,6 +220,21 @@ def main():
             print(f"  {row['condition']:15s} {row['mean']:+6.2f} [{row['ci_low']:+6.2f}, {row['ci_high']:+6.2f}]")
     # Summarise, save both tables and print the main result: the NLMS - LMS difference in
     # output SNR for each condition.
+
+
+    timing = time_all_methods(config, selected)
+    environment = describe_environment()
+    write_csv(out_dir / "timing.csv", timing)
+    (out_dir / "environment.json").write_text(json.dumps(environment, indent=2))
+    (out_dir / "config_used.json").write_text(json.dumps(config, indent=2))
+    print("\nRuntime per recording (median):")
+    for row in timing:
+        print(f"  {row['method']:14s} {row['median_s'] * 1e3:6.2f} ms")
+    print(f"machine: {environment['machine']}, Python {environment['python']}")
+    print(f"done in {time.perf_counter() - started:.1f} s")
+ 
+    # Time the methods, record the environment, save the configuration used, and print
+    # the runtimes and the total time.
 
 if __name__ == "__main__":
     main()
