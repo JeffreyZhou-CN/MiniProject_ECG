@@ -254,3 +254,36 @@ ablation 2.93 ms.
   no correction for comparing several conditions.
 - **Runtime** is for a pure-Python loop and mostly reflects interpreter overhead; the ratio between
   methods is more meaningful than the absolute times.
+
+
+## References
+
+1. N. V. Thakor and Y.-S. Zhu, "Applications of Adaptive Filtering to ECG Analysis: Noise
+   Cancellation and Arrhythmia Detection," *IEEE Transactions on Biomedical Engineering*, 38(8),
+   785–794, 1991. https://doi.org/10.1109/10.83591
+2. B. Widrow et al., "Adaptive noise cancelling: Principles and applications," *Proceedings of the
+   IEEE*, 63(12), 1692–1716, 1975. (Reference-noise cancellation with LMS.)
+3. J. Nagumo and A. Noda, "A learning method for system identification," *IEEE Transactions on
+   Automatic Control*, 12(3), 282–287, 1967. (Origin of the normalised LMS update.)
+4. EEP55C36 course mathematical guide, Track B: signal model, LMS convention and the synthetic ECG
+   generator, which `src/data.py` reproduces.
+
+NumPy, SciPy and Matplotlib are used for array operations, peak finding and the t distribution in
+the evaluation, and plotting. No ready-made adaptive filter is used: both filters are implemented in
+[`src/baseline.py`](src/baseline.py) and [`src/modified.py`](src/modified.py).
+
+## Use of AI
+
+Claude (Anthropic) was used as a step-by-step assistant, following the module's guidelines on
+agentic AI tools. The full step-by-step record is in [`docs/ai_usage.md`](docs/ai_usage.md).
+
+- **What the AI did:** drafted the code, tests and documentation one small function at a time,
+  explained the mathematics and each design choice, and checked my files, test results and figures.
+- **What I did:** chose the track and the modification; read and reviewed each function before saving it; asked for the reasoning behind the
+  test cases, the fairness rules and the statistics; corrected errors found while working (misnamed
+  files, broken lines, misplaced code); ran every test and experiment on my laptop; and checked the
+  results against the predictions I recorded beforehand.
+- **How the work was kept reviewable:** the project conventions in
+  [`docs/conventions.md`](docs/conventions.md) were written first and used for every step; each
+  step has its own tests and commit, and the baseline was tagged `v0.1-baseline` before the
+  modification was added.
