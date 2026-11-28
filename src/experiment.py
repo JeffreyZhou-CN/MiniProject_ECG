@@ -1,5 +1,6 @@
 """Experiment building blocks: run the methods, select parameters, evaluate recordings."""
 
+import time
 import numpy as np
 
 from src.metrics import mse, peak_amplitude_error, snr_db
@@ -185,3 +186,37 @@ def check_disjoint(*seed_lists):
         if overlap:
             raise ValueError(f"seeds used in more than one split: {sorted(overlap)}")
         seen.update(seeds)
+
+
+
+def time_method(method, recordings, params, eps=1e-6, repeats=5):
+    """Wall-clock time per recording: one untimed warm-up call, then repeated timed calls.
+
+    Only the filter is timed; signal generation is excluded and neither filter has a
+    separate setup step.
+
+    Parameters
+    ----------
+    method : str ("lms", "nlms" or "nlms_ablation".)
+    recordings : list of (clean, measured, reference) tuples (Recordings to time on.)
+    params : dict (Method parameters, as for run_method.)
+    eps : float (NLMS regulariser.)
+    repeats : int (Timed calls per recording.)
+
+    Returns
+    -------
+    dict (median_s, q25_s, q75_s: median and quartiles in seconds; n_timed: number of timed calls.)
+    """
+   
+    times = []
+    for _, measured, reference in recordings:
+        run_method(method, measured, reference, params, eps)
+        for _ in range(repeats):
+            start = time.perf_counter()
+            run_method(method, measured, reference, params, eps)
+            times.append(time.perf_counter() - start)
+    times = np.asarray(times)
+    return {"median_s": float(np.median(times)),
+            "q25_s": float(np.percentile(times, 25)),
+            "q75_s": float(np.percentile(times, 75)),
+            "n_timed": int(times.size)}

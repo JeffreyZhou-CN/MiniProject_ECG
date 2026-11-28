@@ -5,7 +5,7 @@ import pytest
 
 from src.baseline import lms_filter
 from src.data import make_ecg
-from src.experiment import (check_disjoint, evaluate_case, expand_seeds, mean_input_energy,run_method, select_parameters)
+from src.experiment import (check_disjoint, evaluate_case, expand_seeds, mean_input_energy, run_method, select_parameters, time_method)
 from src.modified import nlms_filter
 
 
@@ -131,3 +131,13 @@ def test_check_disjoint_accepts_project_splits_and_rejects_overlap():
     check_disjoint(development, validation, test)
     with pytest.raises(ValueError):
         check_disjoint(development, expand_seeds({"start": 1005, "count": 10}), test)
+
+
+
+def test_time_method_counts_and_orders_quartiles():
+    """n_timed = recordings x repeats, times are positive, and q25 <= median <= q75."""
+
+    recordings = [make_ecg(seed, seconds=2) for seed in (100, 101)]
+    result = time_method("lms", recordings, {"M": 3, "mu": 0.05}, repeats=3)
+    assert result["n_timed"] == 6
+    assert 0 < result["q25_s"] <= result["median_s"] <= result["q75_s"]
