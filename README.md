@@ -84,6 +84,7 @@ product and one division per sample.
 ```bash
 git clone https://github.com/JeffreyZhou-CN/MiniProject_ECG.git
 cd MiniProject_ECG
+git checkout v1.0-submission
 conda env create -f environment.yml
 conda activate ecg-anc
 ```
@@ -91,6 +92,7 @@ conda activate ecg-anc
 [`environment.yml`](environment.yml) installs Python 3.12 from conda-forge and the pinned packages from
 `requirements.txt` with pip. 
 
+`git checkout v1.0-submission` selects the assessed version. 
 All commands below are run from the repository root with the environment activated.
 
 ## Smoke run
@@ -122,8 +124,8 @@ python run_experiments.py --config configs/final.json
 python make_figures.py --results results/final
 ```
 
-The first command takes about 5 seconds and the second about 10 seconds on the tested machine. They
-write to `results/final/` (folders are created automatically):
+The first command takes about 5 seconds and the second about 10 seconds on the tested machine. no
+special hardware is needed (a single CPU core).They write to `results/final/` (folders are created automatically):
 
 | File | Contents |
 |---|---|
@@ -271,6 +273,11 @@ ablation 2.93 ms.
 NumPy, SciPy and Matplotlib are used for array operations, peak finding and the t distribution in
 the evaluation, and plotting. No ready-made adaptive filter is used: both filters are implemented in
 [`src/baseline.py`](src/baseline.py) and [`src/modified.py`](src/modified.py).
+
+## Interface
+
+There is no interactive interface. All results and figures are produced by the two commands above;
+the figures are saved as PNG files in `results/final/figures/`.
 
 ## Use of AI
 
