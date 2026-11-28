@@ -98,7 +98,6 @@ def figure_paired(results_dir, out_dir):
             diff = np.array([snr["nlms"][seed] - snr[other][seed] for seed in sorted(snr["nlms"])])
             ax.scatter(diff, y + jitter.uniform(-0.12, 0.12, diff.size), s=14,
                        color=COLOURS[other], alpha=0.6, linewidths=0)
-            # [中文] 每段记录一个点：同一个 seed 上 NLMS 的 SNR 减去另一种方法的 SNR。
             # One dot per recording: NLMS SNR minus the other method's SNR on the same seed.
 
             stats = next(r for r in paired if r["condition"] == name and r["metric"] == "snr_out_db"
