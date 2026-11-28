@@ -5,7 +5,7 @@ import copy
 import numpy as np
 import pytest
 
-from run_experiments import (ROOT, evaluate_test_cases, load_config, select_all_parameters, summarise, validate_config)
+from run_experiments import (ROOT, describe_environment, evaluate_test_cases, load_config, select_all_parameters, summarise, time_all_methods, validate_config)
 
 
 @pytest.mark.parametrize("name", ["smoke", "final"])
@@ -87,3 +87,23 @@ def test_summarise_counts_divergence_and_excludes_it():
     pair = next(row for row in paired
                 if row["comparison"] == "nlms - lms" and row["metric"] == "snr_out_db")
     assert pair["n"] == 1 and pair["n_excluded"] == 1
+
+
+
+def test_describe_environment_has_all_fields():
+    """The environment record names Python, NumPy, SciPy, the OS and the processor."""
+
+    environment = describe_environment()
+    assert set(environment) == {"python", "numpy", "scipy", "os", "machine"}
+    assert all(environment.values())
+
+
+def test_time_all_methods_one_row_per_method():
+    """One timing row per method, each with recordings x repeats timed calls."""
+    
+    config = copy.deepcopy(load_config(ROOT / "configs" / "smoke.json"))
+    params, _ = select_all_parameters(config)
+    rows = time_all_methods(config, params)
+    assert [row["method"] for row in rows] == ["lms", "nlms", "nlms_ablation"]
+    expected = config["timing"]["recordings"] * config["timing"]["repeats"]
+    assert all(row["n_timed"] == expected for row in rows)
