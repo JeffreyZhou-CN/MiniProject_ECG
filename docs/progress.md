@@ -148,3 +148,25 @@ Evaluation metrics with tests.
 
 1. Figures generated from the saved results.
 2. Complete the README. 
+
+
+---
+
+## 2026-11-28 — Figures, README and reproduction check
+
+**Done**
+
+- `make_figures.py` writes four figures to `results/final/figures/` from the saved results.
+- README completed.
+
+**Decisions and problems**
+
+- Fig. 2 gives each condition its own x-axis, so the small effects are not hidden by the 11 dB one.
+- Fig. 3 uses a causal moving average to avoid artefacts at the ends.
+- Averaging the error over 251 beats aligned on R peaks revealed the NLMS distortion at scale 0.3,
+  which a single error trace did not show.
+- A lint check found formatting issues, to be fixed before submission.
+
+**Next steps**
+
+1. Write the report, record the video, clean up formatting and tag `v1.0-submission`.
