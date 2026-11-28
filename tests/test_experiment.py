@@ -5,7 +5,7 @@ import pytest
 
 from src.baseline import lms_filter
 from src.data import make_ecg
-from src.experiment import mean_input_energy, run_method, select_parameters
+from src.experiment import evaluate_case, mean_input_energy, run_method, select_parameters
 from src.modified import nlms_filter
 
 
@@ -78,3 +78,37 @@ def test_mean_input_energy_matches_filter_loop():
             x[0] = value
             loop_energies.append(x @ x)
     assert mean_input_energy(references, M) == pytest.approx(np.mean(loop_energies))
+
+
+
+def test_evaluate_case_reports_all_metrics_consistently():
+    """All metrics are present, the gain equals output minus input SNR, and filtering helps."""
+    # All metrics are present; the gain equals output SNR minus input SNR; LMS does
+    # improve the SNR on this recording.
+    clean, measured, reference = make_ecg(100)
+    result = evaluate_case("lms", clean, measured, reference, {"M": 3, "mu": 0.05}, warmup=250)
+    assert set(result) == {"snr_out_db", "snr_in_db", "snr_gain_db", "mse", "peak_error",
+                           "snr_warmup_db", "snr_post_change_db", "diverged"}
+    assert result["snr_gain_db"] == pytest.approx(result["snr_out_db"] - result["snr_in_db"])
+    assert result["snr_out_db"] > result["snr_in_db"]
+    assert result["diverged"] is False
+    assert np.isnan(result["snr_post_change_db"])
+
+
+def test_evaluate_case_flags_divergence():
+    """A diverging LMS is flagged and scored as SNR = -inf."""
+    # A diverging LMS (mu = 5) is flagged and its output SNR is -inf.
+    clean, measured, reference = make_ecg(100)
+    result = evaluate_case("lms", clean, measured, reference, {"M": 3, "mu": 5.0}, warmup=250)
+    assert result["diverged"] is True
+    assert result["snr_out_db"] == -np.inf
+
+
+def test_evaluate_case_post_change_window():
+    """With a pathway change, the first-second SNR after the change is a finite number."""
+    # With a pathway change at 6 s (sample 1500), the SNR in the first second after the
+    # change is a finite number.
+    clean, measured, reference = make_ecg(100, pathway_after=[-0.2, 0.3, 0.1], change_time=6.0)
+    result = evaluate_case("nlms", clean, measured, reference, {"M": 3, "mu": 0.1},
+                           warmup=250, change_index=1500)
+    assert np.isfinite(result["snr_post_change_db"])

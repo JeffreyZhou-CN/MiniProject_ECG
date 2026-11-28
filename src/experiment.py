@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from src.metrics import snr_db
+from src.metrics import mse, peak_amplitude_error, snr_db
 from src.baseline import lms_filter
 from src.modified import nlms_filter
 
@@ -101,3 +101,53 @@ def mean_input_energy(references, M):
     energies = [np.convolve(np.asarray(r, dtype=float) ** 2, np.ones(M))[:len(r)]
                 for r in references]
     return float(np.mean(np.concatenate(energies)))
+
+
+
+
+def evaluate_case(method, clean, measured, reference, params, warmup, fs=250, eps=1e-6,
+                  change_index=None):
+    """Run one method on one recording and return all metrics as a dict.
+
+    Parameters
+    ----------
+    method : str ("lms", "nlms" or "nlms_ablation".)
+    clean, measured, reference : ndarray, shape (N,) (One recording; clean is used only for scoring.)
+    params : dict (Method parameters, as for run_method.)
+    warmup : int (Samples excluded from the main scores; also the window for snr_warmup_db.)
+    fs : float (Sample rate in Hz; the post-change window is fs samples, i.e. 1 s.)
+    eps : float (NLMS regulariser.)
+    change_index : int or None (Sample at which the pathway changes, if it does.)
+
+    Returns
+    -------
+    dict (snr_out_db, snr_in_db, snr_gain_db, mse, peak_error, snr_warmup_db,
+        snr_post_change_db, diverged.)
+    """
+    # Run one method on one recording and return all metrics in a dict. clean is used
+    # only for scoring.
+    e = run_method(method, measured, reference, params, eps)
+    snr_in = snr_db(clean, measured, start=warmup)
+    snr_out = snr_db(clean, e, start=warmup)
+    # Input SNR uses the measured signal as the estimate (no filtering); output SNR uses
+    # the filter output.
+
+    post_change = np.nan
+    if change_index is not None:
+        window = slice(change_index, change_index + int(fs))
+        post_change = snr_db(clean[window], e[window])
+    # SNR in the first second after a pathway change, measuring re-adaptation; NaN when
+    # there is no change.
+
+    return {
+        "snr_out_db": snr_out,
+        "snr_in_db": snr_in,
+        "snr_gain_db": snr_out - snr_in,
+        "mse": mse(clean, e, start=warmup),
+        "peak_error": peak_amplitude_error(clean, e, start=warmup, fs=fs),
+        "snr_warmup_db": snr_db(clean[:warmup], e[:warmup]),
+        "snr_post_change_db": post_change,
+        "diverged": bool(not np.all(np.isfinite(e))),
+    }
+    # snr_warmup_db is the SNR during the first second (the warm-up), measuring how
+    # quickly the filter starts to adapt.
